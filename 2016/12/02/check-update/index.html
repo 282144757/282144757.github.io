@@ -1,0 +1,77 @@
+<!DOCTYPE html><html lang="zh-cn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,minimum-scale=1.0,maximum-scale=1.0,user-scalable=no"><meta name="format-detection" content="telephone=no"><meta name="format-detection" content="email=no"><title>Android调用系统DownloadManager下载apk，并自动安装 - Levy's Blog</title><meta name="description"><meta name="keywords" content="Hexo, Gruntjs, Nodejs, Reactjs, Vuejs"><link rel="icon" href="/favicon.ico"><link rel="stylesheet" href="/css/main_style.min.css"></head><body><div class="post-header"><img class="background" src="/default_images/post_background.jpg"><div class="post-title"><h1 class="title">Android调用系统DownloadManager下载apk，并自动安装</h1><ul class="meta"><li><i class="icon icon-author"></i>Levy</li><li><i class="icon icon-clock"></i>4 Minutes</li><li><i class="icon icon-calendar"></i>December 2, 2016</li></ul></div></div><div class="article-content"><p>###Android调用系统DownloadManager下载apk，并自动安装###</p>
+<p></p><p>自动检测更新其实实现起来并不困难，大概流程就是在App的主页面访问服务器Api，检测<br>是否有更新，如果有，服务器则返回更新文案和apk下载url给客户端，客户端弹出有新版本的提示Dialog，<br>用户点击更新的时候下载新版本apk到本地，并安装即可。</p><p></p>
+<p></p><p>网上也有很多解决案例，我今天做的是调用系统的DownloadManager来实现下载，<br>并自动安装，我是把下载放在了Service中，因为Service本就是为了完成后台耗时任务而诞生的，<br>下面看代码：</p><br>    <pre><code><br>    public class AFQDownloadService extends Service {<br>        private DownloadManager mDownloadManager;<br>        private long mDownloadId;<br>        private DownloadBroadcastReceiver mReceiver;<br>        public final static String INTENT_DOWNLOAD_URL = “intent_download_url”;<p></p>
+<pre><code>    @Nullable
+    @Override
+    public IBinder onBind(Intent intent) {
+        return null;
+    }
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        String downLoadUrl = intent.getStringExtra(INTENT_DOWNLOAD_URL);
+        mReceiver = new DownloadBroadcastReceiver(this);
+        IntentFilter filter = new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
+        registerReceiver(mReceiver,filter);
+        startDownload(downLoadUrl);
+        return Service.START_STICKY;
+    }
+    private void startDownload(String downLoadUrl) {
+        mDownloadManager = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+        DownloadManager.Request downloadRequest = new DownloadManager.Request(
+                Uri.parse(downLoadUrl));
+        //将下载的内容显示在系统的下载列表
+        downloadRequest.setVisibleInDownloadsUi(true);
+        //下载完成后，下载的通知保留
+        downloadRequest.setNotificationVisibility(
+            DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+        downloadRequest.setMimeType(&quot;application/vnd.android.package-archive&quot;);
+        //下载文件的保存目录和保存的文件名
+        downloadRequest.setDestinationInExternalPublicDir(
+            Environment.DIRECTORY_DOWNLOADS, &quot;anfuquan.apk&quot;);
+        //将下载请求添加到下载队列，并返回当前下载任务的id
+        mDownloadId = mDownloadManager.enqueue(downloadRequest);
+    }
+
+    @Override
+    public void onDestroy() {
+        unregisterReceiver(mReceiver);
+        super.onDestroy();
+    }
+    static class DownloadBroadcastReceiver extends BroadcastReceiver{
+        WeakReference&lt;AFQDownloadService&gt; service;
+        public DownloadBroadcastReceiver(AFQDownloadService service) {
+            this.service = new WeakReference&lt;&gt;(service);
+        }
+
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            //获取当前完成的下载任务的id
+            long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1);
+            AFQDownloadService downloadService = service.get();
+            if(downloadService != null){
+                //判断当前完成的下载任务是不是我们自己的apk文件
+                if(id == downloadService.mDownloadId){
+                    intent = new Intent(Intent.ACTION_VIEW);
+                    intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    intent.setDataAndType(downloadService.mDownloadManager.
+                            getUriForDownloadedFile(downloadService.mDownloadId),
+                            &quot;application/vnd.android.package-archive&quot;);
+                    context.startActivity(intent);
+                    downloadService.stopSelf();
+                }
+            }
+
+        }
+    }
+}
+</code></pre><p></p></code></pre><br>当用户点击了更新对话框的“更新”按钮后就启动Service进行下载。<br>    <pre><code><br>        Intent intent = new Intent(MainActivity.this,AFQDownloadService.class);<br>        intent.putExtra(AFQDownloadService.INTENT_DOWNLOAD_URL,downloadUrl);<br>        startService(intent);<br>    </code></pre><br>从现在开始坚持记录自己每天的工作，养成良好的习惯！！！<p></p>
+</div><div class="article-meta"></div><div class="article-comment"><div class="ds-thread" id="ds-thread" data-thread-key="ciw7ygxtg0004lw9k86wjallt" data-title="Android调用系统DownloadManager下载apk，并自动安装" data-url="http://yoursite.com/2016/12/02/check-update/" site-name="ueibo"></div><script>var siteName = document.getElementById('ds-thread').getAttribute('site-name');
+var duoshuoQuery = {short_name: siteName};
+(function() {
+  var ds = document.createElement('script');
+  ds.type = 'text/javascript';ds.async = true;
+  ds.src = (document.location.protocol == 'https:' ? 'https:' : 'http:') + '//static.duoshuo.com/embed.js';
+  ds.charset = 'UTF-8';
+  (document.getElementsByTagName('head')[0] 
+  || document.getElementsByTagName('body')[0]).appendChild(ds);
+})();</script></div><ul class="navication"><li class="home"><a href="/"><i class="icon icon-home"></i></a></li><li><a href="/2016/12/01/java-sort/"><i class="icon icon-arror-right"></i></a></li></ul><div class="page-footer"><div class="top"><ul class="social"><li><a href="http://github.com/282144757" title="GitHub" target="_blank"><i class="icon icon-github"></i></a></li></ul></div><div class="bottom"><p class="copyright">© 2016 Levy's Blog<br><small>POWER BY <a href="https://hexo.io" target="_blank">HEXO</a></small><small>, THEME BY <a href="https://github.com/BoizZ/hexo-theme-laughing" target="_blank">LAUGHING</a></small></p></div></div></body></html>
